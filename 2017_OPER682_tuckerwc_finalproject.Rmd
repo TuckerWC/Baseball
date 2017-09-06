@@ -1,0 +1,396 @@
+---
+title: "Evaluating Baseball Performance Utilizing Social Network Analysis"
+author: "Wilson Tucker"
+date: "September 6, 2017"
+output:
+  pdf_document: default
+urlcolor: blue
+---
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Check required packages and install if needed
+my_packages <- c("knitr", "tidyverse", "gridExtra", "Lahman", "reshape2", "igraph")
+new_packages <- my_packages[!(my_packages %in% installed.packages()[,"Package"])]
+if(length(new_packages)) install.packages(new_packages)
+#
+library(knitr)
+# Set so that long lines in R will be wrapped:
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+options(digits = 3)
+```
+
+## Introduction
+
+  Water cooler discussions around America often center around griping about mismanagement of local sports teams.  One of the most second-guessed positions in sports is that of a Major League Baseball manager.  There are countless talking heads on television who are constantly evaluating bullpen management, line-up creation, and proper utilization of various fielders.  The 2016 National League Manager of the Year, Dave Roberts, is viewed [by some](http://www.newyorker.com/news/sporting-scene/dave-roberts-and-the-importance-of-baseballs-middle-managers) as a manager who can empathize with his players, and help them grow as people, which some believe lead to better baseball players. In this era of widely available baseball statistics, is there a way to quantify how managers impact the performance of their players?
+
+### Areas of Interest
+
+  This analysis will attempt to evaluate the impact of professional baseball managers on players that are under them.  Some previous work has demonstrated that there are impacts of social networks on player performance.  Therefore this analysis will attempt to answer the question of if playing for a greater number of managers leads to better player abilities.
+
+### Analytic Technique
+
+  [Work by Dr. Paul Beckman and Jennifer Chi](http://sabr.org/research/more-highly-connected-baseball-players-have-better-offensive-performance) using Social Network Analysis has suggested that the more unique teammates that a player has over the course of his career, the more "tricks of the trade" a player may pick up, leading to better offensive metrics. In their discussion of avenues for future analysis they suggested an area of interest would be to calculate correlation between a player’s performance and the various different coaches for whom they played. Therefore I propose to evaluate the interactions between coaches and players using Social Network Analysis.  This approach should quantify interactions between players and coaches, which will then be compared to a variety of offensive metrics that evaluate player performance.
+
+### Benefits of Analysis
+  As previous research has already suggested that being exposed to a variety of teammates over the course of a career can have benefitial impacts on offensive metrics, this analysis should evaluate if there is a similar relationship between a player and his coaches.  This study could demonstrate the possible benefits of trading young players in the hopes that exposing them to a plethora of coaching styles which could lead to greater player development.
+
+\newpage
+## Packages Required
+
+```{r, warning = FALSE, message = FALSE, error=F}
+library(tidyverse)
+library(gridExtra)
+library(Lahman)
+library(reshape2)
+library(igraph)
+```
+
+### `tidyverse`
+  The `tidyverse` package is acutally a set of packages that work in harmony because they share common data representations and API design.  This collection of packages is useful for data manipulation, munging, and cleaning.  The packages from `tidyverse` used in this analysis are `readr`, `dplyr`, `purrr`, and `ggplot2`.  More information is available for the `tidyverse` packages at [tidyverse.org](http://tidyverse.org).
+  
+### `readr`
+  The goal of `readr` is to provide a fast and friendly way to read rectangular data (like 'csv', 'tsv', and 'fwf').  It is designed to flexibly parse many types of data found in the wild, while still cleanly failing when data unexpectedly changes.  The package `readr` was used in this analysis to cleanly import csv files from the Retrosheet database.
+  
+### `dplyr`
+  The package `dplyr` provides a flexible grammar of data manupulation.  It's the next iteration of `plyr`, focused on tools for working with data frames.  Its main goals are to identify the most important data manupulation verbs and make them easy to use from R, to provide fast performance, and to use the same interface for interacting with data regardless of the data type.  
+ 
+### `purrr`
+  `purrr` enhances R's functional programming (FP) toolkit by providing a complete and consistent set of tools for working with functions and vectors. If you've never heard of FP before, the best place to start is the family of map() functions which allow you to replace many for loops with code that is both more succinct and easier to read. 
+  
+### `ggplot2`
+`ggplot2` is a system for declaratively creating graphics, based on The Grammar of Graphics. You provide the data, tell ggplot2 how to map variables to aesthetics, what graphical primitives to use, and it takes care of the details.
+
+### `gridExtra`
+  `gridExtra` provides a number of user-level functions to work with "grid" graphics, notably to arrange multiple grid-based plots on a page, and draw tables.
+  
+### `Lahman`
+  The Lahman database will be discussed in the following section, but the `Lahman` package provides the datasets from the Lahman database in an R format, removing the need to import them.
+
+### `reshape2`
+ `reshape2` is an update to the `reshape` package, which provides a common framework for many types of data reshaping and aggregation. It uses a paradigm of 'melting' and 'casting', where the data are 'melted' into a form which distinguishes measured and identifying variables, and then 'cast' into a new shape, whether it be a data frame, list, or high dimensional array. More information is available at https://www.jstatsoft.org/article/view/v021i12.
+
+### `igraph`
+`igraph` is a library and R package for network analysis. The main goals of the igraph library is to provide a set of data types and functions for 1) pain-free implementation of graph algorithms, 2) fast handling of large graphs, with millions of vertices and edges, 3) allowing rapid prototyping via high level languages like R. More information is available at http://igraph.org.
+
+\newpage
+## Data Preparation
+  The data for this analysis comes from two main sources.  The first is Sean Lahman's Baseball Database, better known as the Lahman database.  This analysis will primarily use this database to provide statistical information about player performance.  The second is the Retrosheet Database, which will be used in this analysis to determine the social network between players and coaches.
+  
+### Lahman Database
+  
+  This database contains pitching, hitting, and fielding statistics for Major League Baseball from `r min(Lahman::Batting[2])` through `r max(Lahman::Batting[2])`.  It includes data from the American and National Leagues, and from four other "major" leagues that predate the current structure of Major League Baseball.  This database was originally created by Sean Lahman in 1994, and its management has grown to fall under a team of researchers who are all dedicated to make baseball statistics freely available to the general public.  This database has been turned into an R package called `Lahman`, but is also available online at http://seanlahman.com/.  The data is structured as a relational database in Microsoft Access format wherein each player is assigned a unique code, `playerID`, with all of the information across the different tables relating to a player tagged by his `playerID`.  The main tables of the database are:
+
+* `Master`
+    + Player names, dates of birth, death and other biographical information
+* `Batting`
+    + Batting Statistics
+* `Pitching`
+    + Pitching Statistics
+* `Fielding`
+    + Fielding Statistics
+    
+There are many other tables containing information on Team Performance, Post-season Play, Yearly Awards, All-Star Appearances, Managerial Statistics, and Salaries.  The primary table of interest for this analysis of offensive metrics is `Batting`.
+
+#### Batting
+
+```{r, echo=F, warning=F, error=F, message=F}
+battingStatistics <- filter(Lahman::Batting, yearID >= 1995, yearID <= 2015)
+```
+The `Batting` table in the `Lahman` database consists of `r format(nrow(Lahman::Batting), big.mark = ",", scientific = FALSE)` observations of `r ncol(Lahman::Batting)` variables.  This analysis will look at the performance of players from 1995 - 2015, resulting in a subset of the full `Lahman::Batting` database. This results in a subset of `r format(nrow(battingStatistics), big.mark = ",", scientific = FALSE)` observations of `r ncol(battingStatistics)` variables.  All of the range and structure information in the following section is based on this subset of the larger database.  As the primary purpose for the use of the `Lahman` database is to determine the performance of the players, the variables of interest in the `Batting` table are:
+
+* `playerID`
+    + Definition: Player ID code
+    + Range & Structure: `r format(n_distinct(battingStatistics$playerID), big.mark = ",", scientific = FALSE)` unique values made up of the first five letters of the last name, the first two letters of the first name, and a two digit identifier for matching names
+* `yearID`
+    + Definition: The year of the observation
+    + Range & Structure: A four digit year ranging from `r min(battingStatistics$yearID)` to `r max(battingStatistics$yearID)`.
+* `AB`
+    + Definition: [According to mlb.com](http://m.mlb.com/glossary/standard-stats/at-bat) an official at-bat comes when a batter reaches base via a fielder's choice, hit or an error (not including catcher's interference) or when a batter is put out on a non-sacrifice. (Whereas a plate appearance refers to each completed turn batting, regardless of the result.)
+    + Range & Structure: An integer value ranging from `r min(battingStatistics$AB, na.rm = TRUE)` to `r max(battingStatistics$AB, na.rm = TRUE)` with a mean value of `r mean(battingStatistics$AB, na.rm = TRUE)`.
+* `H`
+    + Definition: [According to mlb.com](http://m.mlb.com/glossary/standard-stats/hit) a hit occurs when a batter strikes the baseball into fair territory and reaches base without doing so via an error or a fielder's choice.
+    + Range & Structure: An integer value ranging from `r min(battingStatistics$H, na.rm = TRUE)` to `r max(battingStatistics$H, na.rm = TRUE)` with a mean value of `r mean(battingStatistics$H, na.rm = TRUE)`.
+* `X2B`
+    + Definition: [According to mlb.com](http://m.mlb.com/glossary/standard-stats/double) a batter is credited with a double when he hits the ball into play and reaches second base without the help of an intervening error or attempt to put out another baserunner.
+    + Range & Structure: An integer value ranging from `r min(battingStatistics$X2B, na.rm = TRUE)` to `r max(battingStatistics$X2B, na.rm = TRUE)` with a mean value of `r mean(battingStatistics$X2B, na.rm = TRUE)`.
+* `X3B`
+    + Definition: [According to mlb.com](http://m.mlb.com/glossary/standard-stats/triple), often called "the most exciting play in baseball," a triple occurs when a batter hits the ball into play and reaches third base without the help of an intervening error or attempt to put out another baserunner.
+    + Range & Structure: An integer value ranging from `r min(battingStatistics$X3B, na.rm = TRUE)` to `r max(battingStatistics$X3B, na.rm = TRUE)` with a mean value of `r mean(battingStatistics$X3B, na.rm = TRUE)`.
+* `HR`
+    + Definition: [According to mlb.com](http://m.mlb.com/glossary/standard-stats/home-run) a home run occurs when a batter hits a fair ball and scores on the play without being put out or without the benefit of an error.
+    + Range & Structure: An integer value ranging from `r min(battingStatistics$HR, na.rm = TRUE)` to `r max(battingStatistics$HR, na.rm = TRUE)` with a mean value of `r mean(battingStatistics$HR, na.rm = TRUE)`.
+* `RBI`
+    + Definition: [According to mlb.com](http://m.mlb.com/glossary/standard-stats/runs-batted-in) a batter is credited with an RBI in most cases where the result of his plate appearance is a run being scored. There are a few exceptions, however. A player does not receive an RBI when the run scores as a result of an error or ground into double play.
+    + Range & Structure: An integer value ranging from `r min(battingStatistics$RBI, na.rm = TRUE)` to `r max(battingStatistics$RBI, na.rm = TRUE)` with a mean value of `r mean(battingStatistics$RBI, na.rm = TRUE)`.
+    
+### Retrosheets
+  
+  The Retrosheet database contains play-by-play files, game logs, and schedules for Major League Baseball from 1871 through 2016.  [According to Retrosheet's website](http://www.retrosheet.org/about.htm), Retrosheet was founded in 1989 for the purpose of computerizing play by play accounts of as many pre-1984 major league games as possible (data for games since 1984 have been collected by Project Scoresheet/Baseball Workshop and other organizations). The ultimate objective of Retrosheet is to make this basic play by play information publicly available for all interested researchers. 
+  
+```{r, echo=F, error = FALSE, message = FALSE, warning = FALSE, cache = TRUE}
+data_path <- "Retrosheet_Game_Logs"   # path to the directory
+files <- dir(data_path, pattern = "*.TXT") # although it is a csv, it is labeled as a txt
+
+gamelogs <- files %>%
+  map(~ read_csv(file.path(data_path, .), col_names = FALSE)) %>% 
+  reduce(rbind)
+```
+
+  As this data is being used in this analysis to determine the relationships between managers and players, the game logs are data that is required.  The game logs are held at Retrosheet's website at http://www.retrosheet.org/gamelogs/index.html in a yearly csv format.  As this analysis is looking at the years of 1995 - 2015, there are 21 .csv files to be imported. This results in a dataset that has `r format(nrow(gamelogs), big.mark = ",", scientific = FALSE)` observations of `r ncol(gamelogs)` variables.  Each observation in this dataset is a baseball game.  The variables that are of interest in this analysis are all IDs in the structure of "llllfnnn" where "llll" are the first four letters of the last name, "f" is the first letter of the first name, and "nnn" are numbers. The first number is 0 for players who appeared in 1984 or later, 1 for players whose career ended before 1984, 8 for managers and coaches who never played in the majors, and 9 for umpires who never played. The next two numbers are sequence numbers starting with 01. :
+  
+* `visitingManagerID`
+    + Definition: This is the unique ID for the manager of the visiting team.
+    + Range & Structure: `r format(n_distinct(gamelogs$X90), big.mark = ",", scientific = FALSE)` unique values.
+* `homeManagerID`
+    + Definition: This is the unique ID for the manager of the home team.
+    + Range & Structure: `r format(n_distinct(gamelogs$X92), big.mark = ",", scientific = FALSE)` unique values.
+* `visitingStartingPlayerID`
+    + Definition: These are the unique IDs for the starting players of the visiting team.
+* `homeStartingPlayerID`
+    + Definition: These are the unique IDs for the starting players of the visiting team.
+    
+\newpage
+## Data Exploration
+
+  As the experience and insight that is to be gained from coaches should last for a player's full career, all of the offensive metrics from the `Lahman` database needs to be combined from yearly observations to an observation that spans the full duration of a player's performance from `r min(battingStatistics$yearID)`-`r max(battingStatistics$yearID)`.  In addition to this transformation, the `Lahman` database does not contain the Batting Average or Slugging statistics, so those variables had to be calculated.
+  
+```{r, echo=F, error = FALSE, message = FALSE, warning = FALSE}
+playerBatting <- battingStatistics %>% 
+                 group_by(playerID) %>% 
+                 summarise(AB = sum(AB, na.rm = TRUE),
+                           H = sum(H, na.rm = TRUE),
+                           X2B = sum(X2B, na.rm = TRUE),
+                           X3B = sum(X3B, na.rm = TRUE),
+                           HR = sum(HR, na.rm = TRUE),
+                           BA = sum(H, na.rm = TRUE) / sum(AB, na.rm = TRUE),
+                           HR = sum(HR, na.rm = TRUE),
+                           RBI = sum(RBI, na.rm = TRUE)) %>% 
+                 mutate(SLG = ((H - X2B - X3B - HR) + (X2B * 2) + (X3B * 3) + 
+                               (HR * 4)) / AB) %>% 
+                 filter(AB > 0)
+```
+
+This results in a dataframe of `r format(nrow(playerBatting), big.mark = ",", scientific = FALSE)` unique players' offensive performance metrics from `r min(battingStatistics$yearID)`-`r max(battingStatistics$yearID)` in the form of:
+
+```{r, echo = FALSE, error = FALSE, warning = FALSE, message = FALSE}
+knitr::kable(
+  playerBatting[1:6, ], 
+  caption = "Offensive Metrics"
+)
+```
+
+
+When looking at a histogram of the number of at bats a player had during this time period, there is a glaring observation to be made.
+
+```{r, fig.height=4, echo = FALSE, error = FALSE, message = FALSE, warning = FALSE}
+ggplot(data = playerBatting, aes(x = AB)) +
+  geom_histogram(bins = 30) +
+  scale_y_continuous(name = "Frequency") +
+  scale_x_continuous(name = "Number of At Bats") +
+  ggtitle("Number of At Bats Per Player 1995-2015")
+```
+
+\newpage
+It is clear that there are a large number of players with very few at bats during this time period.  A further investigation reveals that only `r format(sum(playerBatting$AB>100), big.mark = ",", scientific = FALSE)`  players out of `r format(nrow(playerBatting), big.mark = ",", scientific = FALSE)` have more than 100 at bats.  In addition to this, when players' number of at bats are plotted in comparison to their batting average, a trend emerges.
+
+```{r, fig.height=3, fig.width=5, echo = FALSE, error = FALSE, message = FALSE, warning = FALSE}
+
+ggplot(data = playerBatting, aes(x = AB, y = BA)) +
+  geom_smooth() +
+  geom_vline(xintercept = 825, color = "red") +
+  scale_y_continuous(name = "Batting Average") +
+  scale_x_continuous(name = "Number of At Bats") +
+  ggtitle("Batting Average by Number of At Bats 1995-2015")
+
+```
+
+```{r, echo=F, error = FALSE, warning = FALSE, message = FALSE}
+playerBatting2 <- filter(playerBatting, AB > 850)
+```
+ Batting averages improve rapidly for a player's first 850 at bats and then appear to rise at a much slower rate.  For this reason only players with greater than 850 at bats will be considered for this analysis.  Once the data is filtered to players with more than 850 games there are `r format(nrow(playerBatting2), big.mark = ",", scientific = FALSE)` players in the dataset. Their offensive metrics are distributed as follows.
+
+```{r, fig.height=4.5, echo = FALSE, error = FALSE, warning = FALSE, message = FALSE}
+p1 <- ggplot(data = playerBatting2, aes(x = BA)) +
+  geom_histogram(bins = 15) +
+  coord_cartesian(xlim = c(.200, .350)) +
+  scale_y_continuous(name = "Frequency") +
+  scale_x_continuous() +
+  ggtitle("Batting Averages")
+
+p2 <- ggplot(data = playerBatting2, aes(x = SLG)) +
+  geom_histogram(bins = 20) +
+  coord_cartesian(xlim = c(.250, .650)) +
+  scale_y_continuous(name = "Frequency") +
+  scale_x_continuous() +
+  ggtitle("Slugging Percentages")
+
+p3 <- ggplot(data = playerBatting2, aes(x = RBI)) +
+  geom_histogram(bins = 20) +
+  coord_cartesian(xlim = c(0, 1000)) +
+  scale_y_continuous(name = "Frequency") +
+  scale_x_continuous() +
+  ggtitle("Runs Batted In")
+
+p4 <- ggplot(data = playerBatting2, aes(x = HR)) +
+  geom_histogram(bins = 20) +
+  coord_cartesian(xlim = c(50, 650)) +
+  scale_y_continuous(name = "Frequency") +
+  scale_x_continuous() +
+  ggtitle("Home Runs")
+
+grid.arrange(p1, p2, p3, p4, ncol=2, top="Histograms of Offensive Metrics")
+```
+
+In order to perform the Social Network Analys, the Retrosheet game logs need to be converted to a data frame that lists every combination of coaches and players who played together which resulted in a data frame in the following format:
+
+```{r, echo=F, error = FALSE, warning = FALSE, message = FALSE}
+manager_player_connections <- rbind((select(gamelogs, X90, X106, X109, X112, X115, X118, X121, X124, X127, X130) %>% 
+                                     melt(id="X90") %>% 
+                                     select(-variable) %>% 
+                                     `colnames<-`(c("Manager", "Player"))),
+                                    (select(gamelogs, X92, X133, X136, X139, X142, X145, X148, X151, X154, X157) %>% 
+                                     melt(id="X92") %>% 
+                                     select(-variable) %>% 
+                                     `colnames<-`(c("Manager", "Player")))) %>% 
+                                     count_(vars = c("Manager","Player")) %>% 
+                                     `colnames<-`(c("Manager","Player","GamesTogether"))
+```
+
+```{r, echo = FALSE, error = FALSE, warning = FALSE, message = FALSE}
+#head(manager_player_connections)
+knitr::kable(
+  manager_player_connections[1:6, ], 
+  caption = "Player Coach Relationships")
+```
+
+At this point, performance data from the Lahman Database are utilizing the Lahman ID system (five letters of last name, two letters of first name, and a number) and the data on games played with managers and players are using the Retrosheet ID system (four letters of last name, one letter from first name, and three numbers).  To deal with this, the Retrosheet IDs will be converted to Lahman IDs for the connectivity data.  For this purpose, the [Chadwick Baseball Bureau Register](https://github.com/chadwickbureau/register) will be used to correlate the different IDs.  The [Chadwick Baseball Bureau](http://chadwick-bureau.com/) was founded to support baseball professionals and analysts by providing tidy baseball data. They create value for their clients and for the community by allowing users to focus on understanding and acting on information, rather than spending their time compiling and integrating it. The Chadwick Baseball Bureau Register contains records for many players and managers, and has their identifiers under different naming schemes.  In order to be able to use both the Lahman data and the Retrosheet data, the Register is used to merge them into a unified format.
+```{r, echo=F, error = FALSE, warning = FALSE, message = FALSE}
+people <- na.omit(read_csv('https://raw.githubusercontent.com/chadwickbureau/register/master/data/people.csv', col_types = cols_only(key_retro = col_character(), key_bbref = col_character())))
+
+manager_player_connections <- manager_player_connections %>% 
+                              left_join(people, by = c("Manager" = "key_retro")) %>% 
+                              rename(ManagerID = key_bbref) %>% 
+                              left_join(people, by = c("Player" = "key_retro")) %>% 
+                              rename(PlayerID = key_bbref) %>% 
+                              select(ManagerID, PlayerID, GamesTogether) %>% 
+                              na.omit() %>% 
+                              filter(PlayerID %in% playerBatting2$playerID)
+```
+
+\newpage
+## Modeling Results
+
+The proposed method for analyzing this data is [Social Network Analysis](https://en.wikipedia.org/wiki/Social_network_analysis), which is the process of investigating social structures through the use of networks and graph theory.  It characterizes networked structures in terms of nodes (individual actors, people, or things within the network) and the ties, edges, or links (relationships or interactions) that connect them.  The previously referenced work by Dr. Paul Beckman and Jennifer Chi utilized Social Network Analysis to investigate the impact of player to player interactions on some performance metrics.  The players were each considered as nodes within the network, and permutation in which two players played a game on the same team was considered an undirected relationship between those two players.  This methodology did demonstrate a correlative relationship between the number of relationships that a player had and their performance metrics.
+
+This analysis attempts to utilize a similar structure in which players and managers are the nodes of the network, and any time that a player was managed in a game situation by a coach is a directional relationship from the coach to the player.  The idea presented in the Beckman & Chi analysis was that as a player interacts with more players, that he learns from them and may pick up advice that leads to the player performing better over the course of his career.  In the same way, this analysis attempts to determine if as a player is exposed to more coaching techniques, he learns additional tips and tricks that could positively impact his career metrics.  
+
+`igraph` is a R package for network analysis that provides implementations for visualizations and analysis of social networks.  To visualize the social network that was extracted from the Retrosheet gamelogs database, all players and managers were treated as nodes within the network and all ties between managers and players were mapped as edges. This results in a social network that looks like this:
+
+```{r, echo=F, error = FALSE, warning = FALSE, message = FALSE}
+my_nodes <- rbind((select(manager_player_connections, PlayerID) %>% 
+                   rename(ID = PlayerID)),
+                  (select(manager_player_connections, ManagerID) %>% 
+                   rename(ID = ManagerID))) %>% 
+                  unique()
+
+net <- graph_from_data_frame(d = manager_player_connections, vertices = my_nodes, directed = T)
+```
+
+```{r, fig.align = "center", fig.width = 7, fig.height = 5, echo = FALSE, error = FALSE, warning = FALSE, message = FALSE}
+plot(net, vertex.size = 2, edge.arrow.size = .1, edge.arrow.width = .1, vertex.label = NA)
+```
+
+\newpage
+Due to the large size and complexity of the network, it is difficult to gain any meaningful insight from the visualization alone.  For this reason, a variety of different mathematical descriptions of a node's position on the network have been developed.  The Social Network Analysis metric used in this analysis is In-Degree Centrality.  This is a simple method that is a summation of the number of relationships from other nodes on the network to a specific node.  The reason that this method is being used is that it directly compares to the previously mentioned paper by Dr. Paul Beckman and Jennifer Chi that looked at the degree centrality between players as the measure of the effects of the social network.  The histogram of In-Degree Centrality for the baseball players is below.
+
+```{r, echo=F, message=F, warning=F, error=F}
+my_nodes <- my_nodes %>% 
+            mutate(DC=degree(net, mode="in"))
+```
+
+```{r, echo=F, message=F, warning=F, error=F}
+playerBatting2 <- playerBatting2 %>% 
+                  left_join(my_nodes, by = c("playerID" = "ID")) %>% 
+                  na.omit()
+```
+
+```{r, echo=F, warning=F, error=F, message=F}
+ggplot(data = playerBatting2, aes(x = DC)) +
+  geom_histogram(bins = 18) +
+  coord_cartesian(xlim = c(0, 18)) +
+  scale_y_continuous(name = "Frequency") +
+  scale_x_continuous(name = "Number of Coaches") +
+  ggtitle("Degree Centrality")
+
+DCMax = max(playerBatting2$DC)
+```
+
+The players from this sample have an average of `r mean(playerBatting2$DC)` coaches through this time period with `r nrow(filter(playerBatting2, DC == DCMax))` player playing for `r DCMax` coaches during this time frame.  Following the previous work by Beckman and Chi, a correlation will be used to analyze the relationship between the In-Degre Centrality of the network and the offensive metrics of Batting Average, Slugging Percentage, Runs Batted In, and Home Runs obtained from the Lahman data.  Due to the non-normal nature of some of the data (specifically Runs Batted In and Home Runs) a Kendall rank correlation coefficient test is an appropriate correlation to utilize for this analysis.
+
+```{r, echo=F, message=F, warning=F, error=F}
+BACor <- cor.test(playerBatting2$BA, playerBatting2$DC, method="kendall")
+SLGCor <- cor.test(playerBatting2$SLG, playerBatting2$DC, method="kendall")
+RBICor <- cor.test(playerBatting2$RBI, playerBatting2$DC, method="kendall")
+HRCor <- cor.test(playerBatting2$HR, playerBatting2$DC, method="kendall")
+```
+
+```{r, echo =F, message=F, warning=F, error=F}
+tibble(
+  `Offensive Metric` = c("Batting Average","Slugging Percentage","Runs Batted In","Home Runs"),
+  `Kendall's tau-b` = c(BACor$estimate, SLGCor$estimate, RBICor$estimate, HRCor$estimate),
+  `p-value` = c(BACor$p.value, SLGCor$p.value, RBICor$p.value, HRCor$p.value)) %>% 
+  kable(digits = c(0,2,3), caption = "Correlation of Degree Centrality and Offensive Metrics")
+```
+
+There is a significant correlation between Degree Centrality and both Runs Batted In and Home Runs that indicates a strong positive correlation.  This indicates that the greater number of managers that a player has over this time period, the more RBIs and HRs a player will have.  
+
+```{r, echo = F, message=F, warning=F, error=F}
+RBIABCor <- cor.test(playerBatting2$RBI, playerBatting2$AB, method="kendall")
+HRABCor <- cor.test(playerBatting2$HR, playerBatting2$AB, method="kendall")
+ABCor <- cor.test(playerBatting2$AB, playerBatting2$DC, method="kendall")
+RBIABDCCor <- cor.test(playerBatting2$RBI/playerBatting2$AB, playerBatting2$DC, method = "kendall")
+HRABDCCor <- cor.test(playerBatting2$HR/playerBatting2$AB, playerBatting2$DC, method = "kendall")
+```
+
+One problem with using Runs Batted In and Home Runs in this way is that they are cumulative statistics.  That is to say that the more at bats that a player has the more RBIs and HRs that player will have by simple virtue of having multiple attempts. In fact RBIs and HRs are significantly correlated with at bats with a Kendall's Tau-b score of `r RBIABCor$estimate` and `r HRABCor$estimate` respectively.  In-Degree Centrality is also significantly correlated with at bats (Kendall's Tau-b `r ABCor$estimate) due to the fact that players with longer careers have more at bats and are also more likely to have several managers.  Therefore it may be more appropriate analyze the correlation between In-Degree Centrality and RBIs and Home Runs per at bat to account for some of the variance due to the duration of a player's career.  Utilizing this methodology, both RBIs per at bat and Home Runs per at bat are still significantly correlated with In-Degree Centrality, but the strength of the correlation is diminished.  
+
+```{r, echo =F, message=F, warning=F, error=F}
+tibble(
+  `Offensive Metric` = c("Batting Average","Slugging Percentage","Runs Batted In / At Bat","Home Runs / At Bat"),
+  `Kendall's tau-b` = c(BACor$estimate, SLGCor$estimate, RBIABDCCor$estimate, HRABDCCor$estimate),
+  `p-value` = c(BACor$p.value, SLGCor$p.value, RBIABDCCor$p.value, HRABDCCor$p.value)) %>% 
+  kable(digits = c(0,2,3), caption = "Correlation of Degree Centrality and Modified Offensive Metrics")
+```
+
+This analysis indicates that In-Degree Centrality between managers and players is positively correlated with some offensive baseball metrics.  These relationships can be visualized in scatterplot form below.
+
+```{r, echo=F, message=F, warning=F, error=F}
+p5 <- qplot(x = BA, y = DC, data = playerBatting2) +
+        geom_smooth(method = "lm", se = FALSE) +
+        scale_y_continuous(name = "Degree Centrality") +
+        scale_x_continuous(name = "") +
+        ggtitle("Batting Average")
+
+p6 <- qplot(x = SLG, y = DC, data = playerBatting2) +
+        geom_smooth(method = "lm", se = FALSE) +
+        scale_y_continuous(name = "Degree Centrality") +
+        scale_x_continuous(name = "") +
+        ggtitle("Slugging Percentage")
+
+p7 <- qplot(x = RBI/AB, y = DC, data = playerBatting2) +
+        geom_smooth(method = "lm", se = FALSE) +
+        scale_y_continuous(name = "Degree Centrality") +
+        scale_x_continuous(name = "") +
+        ggtitle("Runs Batted In / At Bat")
+
+p8 <- qplot(x = HR/AB, y = DC, data = playerBatting2) +
+        geom_smooth(method = "lm", se = FALSE) +
+        scale_y_continuous(name = "Degree Centrality") +
+        scale_x_continuous(name = "") +
+        ggtitle("Home Runs / At Bat")
+
+grid.arrange(p5, p6, p7, p8, ncol=2, top="Scatterplots of Correlations")
+```
+
+## Summary
+
+This analysis was based on previous research that suggests that having many different teammates is positively correlated with improved offensive play at the Major League Baseball Level.  The authors of that paper suggested that being exposed to many styles and ideas about baseball could translate to learning "tricks of the trade" that result in the improved hitting.  Following that line of thinking, this analysis investigated the relationship between the number of coaches that a player has and the same offensive metrics.  To investigate this, offensive performance metrics were extracted from the Lahman dataset, a publicly available repository of historical baseball statistics.  Relationships between managers and players were generated through the Retrosheet Database, which contains game logs of every Major League Baseball game going back many years.  Utilizing these datasets, a significant positive correlations were found between the number of managers that players played for and the offensive metrics of Runs Batted In per game and Home Runs per game.  This analysis suggests that there may be a benefit in exposing players to a large number of managers during their career.  This may encourage teams to trade young talent in the hopes of benefitting from any cumulative knowledge gained through the various coaching styles and ideas.  A limitation of this analysis is the inability to experimentally test the relationship between the number of coaches and the offensive metrics.  At the core of the issue is the problem that better players have longer careers, and during those longer careers they are exposed to more managers.  Therefore a player may have more managers throughout a longer career solely because they are better baseball players.  Attempting to more deeply understand this relationship would require additional effort, but would be a valuable addition to better understand the dynamics of this correlation.
