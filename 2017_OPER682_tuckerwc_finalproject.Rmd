@@ -24,14 +24,14 @@ options(digits = 3)
 
 ### Areas of Interest
 
-  This analysis will attempt to evaluate the impact of professional baseball managers on players that are under them.  Some previous work has demonstrated that there are impacts of social networks on player performance.  Therefore this analysis will attempt to answer the question of if playing for a greater number of managers leads to better player abilities.
+  This analysis will attempt to evaluate the impact of professional baseball managers on players that are under them.  Some previous work has demonstrated that there are impacts of social networks on player performance.  Therefore this analysis will attempt to answer the question of if playing for a greater number of managers leads to improved player abilities.
 
 ### Analytic Technique
 
   [Work by Dr. Paul Beckman and Jennifer Chi](http://sabr.org/research/more-highly-connected-baseball-players-have-better-offensive-performance) using Social Network Analysis has suggested that the more unique teammates that a player has over the course of his career, the more "tricks of the trade" a player may pick up, leading to better offensive metrics. In their discussion of avenues for future analysis they suggested an area of interest would be to calculate correlation between a player’s performance and the various different coaches for whom they played. Therefore I propose to evaluate the interactions between coaches and players using Social Network Analysis.  This approach should quantify interactions between players and coaches, which will then be compared to a variety of offensive metrics that evaluate player performance.
 
 ### Benefits of Analysis
-  As previous research has already suggested that being exposed to a variety of teammates over the course of a career can have benefitial impacts on offensive metrics, this analysis should evaluate if there is a similar relationship between a player and his coaches.  This study could demonstrate the possible benefits of trading young players in the hopes that exposing them to a plethora of coaching styles which could lead to greater player development.
+  As previous research has already suggested that being exposed to a variety of teammates over the course of a career can have benefitial impacts on offensive metrics, this analysis will evaluate if there is a similar relationship between a player and his coaches.  This study could demonstrate the possible benefits of trading young players in the hopes that exposing them to a plethora of coaching styles which could lead to greater player development.
 
 \newpage
 ## Packages Required
@@ -128,6 +128,7 @@ The `Batting` table in the `Lahman` database consists of `r format(nrow(Lahman::
   
 ```{r, echo=F, error = FALSE, message = FALSE, warning = FALSE, cache = TRUE}
 data_path <- "Retrosheet_Game_Logs"   # path to the directory
+# Decided to keep the files local, due to some issues where the webpage structure was previously changed
 files <- dir(data_path, pattern = "*.TXT") # although it is a csv, it is labeled as a txt
 
 gamelogs <- files %>%
@@ -151,7 +152,7 @@ gamelogs <- files %>%
 \newpage
 ## Data Exploration
 
-  As the experience and insight that is to be gained from coaches should last for a player's full career, all of the offensive metrics from the `Lahman` database needs to be combined from yearly observations to an observation that spans the full duration of a player's performance from `r min(battingStatistics$yearID)`-`r max(battingStatistics$yearID)`.  In addition to this transformation, the `Lahman` database does not contain the Batting Average or Slugging statistics, so those variables had to be calculated.
+  As the experience and insight that is to be gained from coaches should last for a player's full career, all of the offensive metrics from the `Lahman` database need to be combined from yearly observations into a single observation that spans the full duration of a player's performance from `r min(battingStatistics$yearID)`-`r max(battingStatistics$yearID)`.  In addition to this transformation, the `Lahman` database does not contain the Batting Average or Slugging statistics, so those variables had to be calculated.
   
 ```{r, echo=F, error = FALSE, message = FALSE, warning = FALSE}
 playerBatting <- battingStatistics %>% 
@@ -206,7 +207,7 @@ ggplot(data = playerBatting, aes(x = AB, y = BA)) +
 ```{r, echo=F, error = FALSE, warning = FALSE, message = FALSE}
 playerBatting2 <- filter(playerBatting, AB > 850)
 ```
- Batting averages improve rapidly for a player's first 850 at bats and then appear to rise at a much slower rate.  For this reason only players with greater than 850 at bats will be considered for this analysis.  Once the data is filtered to players with more than 850 games there are `r format(nrow(playerBatting2), big.mark = ",", scientific = FALSE)` players in the dataset. Their offensive metrics are distributed as follows.
+ Batting averages increase rapidly for players with up to 850 at bats and then appear to rise at a much slower rate.  For this reason only players with greater than 850 at bats will be considered for this analysis.  Once the data is filtered to players with more than 850 games there are `r format(nrow(playerBatting2), big.mark = ",", scientific = FALSE)` players in the dataset. Their offensive metrics are distributed as follows.
 
 ```{r, fig.height=4.5, echo = FALSE, error = FALSE, warning = FALSE, message = FALSE}
 p1 <- ggplot(data = playerBatting2, aes(x = BA)) +
@@ -232,7 +233,7 @@ p3 <- ggplot(data = playerBatting2, aes(x = RBI)) +
 
 p4 <- ggplot(data = playerBatting2, aes(x = HR)) +
   geom_histogram(bins = 20) +
-  coord_cartesian(xlim = c(50, 650)) +
+  coord_cartesian(xlim = c(0, 650)) +
   scale_y_continuous(name = "Frequency") +
   scale_x_continuous() +
   ggtitle("Home Runs")
@@ -281,9 +282,9 @@ manager_player_connections <- manager_player_connections %>%
 
 The proposed method for analyzing this data is [Social Network Analysis](https://en.wikipedia.org/wiki/Social_network_analysis), which is the process of investigating social structures through the use of networks and graph theory.  It characterizes networked structures in terms of nodes (individual actors, people, or things within the network) and the ties, edges, or links (relationships or interactions) that connect them.  The previously referenced work by Dr. Paul Beckman and Jennifer Chi utilized Social Network Analysis to investigate the impact of player to player interactions on some performance metrics.  The players were each considered as nodes within the network, and permutation in which two players played a game on the same team was considered an undirected relationship between those two players.  This methodology did demonstrate a correlative relationship between the number of relationships that a player had and their performance metrics.
 
-This analysis attempts to utilize a similar structure in which players and managers are the nodes of the network, and any time that a player was managed in a game situation by a coach is a directional relationship from the coach to the player.  The idea presented in the Beckman & Chi analysis was that as a player interacts with more players, that he learns from them and may pick up advice that leads to the player performing better over the course of his career.  In the same way, this analysis attempts to determine if as a player is exposed to more coaching techniques, he learns additional tips and tricks that could positively impact his career metrics.  
+This analysis utilizes a similar structure in which players and managers are the nodes of the network, and any time that a player started a game for a coach, this was considered a directional relationship from the coach to the player.  The idea presented in the Beckman & Chi analysis was that as a player interacts with more players, that he learns from them and may pick up advice that leads to the player performing better over the course of his career.  In the same way, this analysis attempts to determine if as a player is exposed to more coaching techniques, he learns additional tips and tricks that could positively impact his career metrics.  
 
-`igraph` is a R package for network analysis that provides implementations for visualizations and analysis of social networks.  To visualize the social network that was extracted from the Retrosheet gamelogs database, all players and managers were treated as nodes within the network and all ties between managers and players were mapped as edges. This results in a social network that looks like this:
+`igraph` is a R package for network analysis that provides implementations for visualizations and analysis of social networks.  To visualize the social network that was extracted from the Retrosheet gamelogs database, all players and managers were treated as nodes within the network and all ties between managers and players were mapped as edges. This results in a social network of the following form:
 
 ```{r, echo=F, error = FALSE, warning = FALSE, message = FALSE}
 my_nodes <- rbind((select(manager_player_connections, PlayerID) %>% 
@@ -341,6 +342,7 @@ tibble(
   kable(digits = c(0,2,3), caption = "Correlation of Degree Centrality and Offensive Metrics")
 ```
 
+\newpage
 There is a significant correlation between Degree Centrality and both Runs Batted In and Home Runs that indicates a strong positive correlation.  This indicates that the greater number of managers that a player has over this time period, the more RBIs and HRs a player will have.  
 
 ```{r, echo = F, message=F, warning=F, error=F}
@@ -351,7 +353,7 @@ RBIABDCCor <- cor.test(playerBatting2$RBI/playerBatting2$AB, playerBatting2$DC, 
 HRABDCCor <- cor.test(playerBatting2$HR/playerBatting2$AB, playerBatting2$DC, method = "kendall")
 ```
 
-One problem with using Runs Batted In and Home Runs in this way is that they are cumulative statistics.  That is to say that the more at bats that a player has the more RBIs and HRs that player will have by simple virtue of having multiple attempts. In fact RBIs and HRs are significantly correlated with at bats with a Kendall's Tau-b score of `r RBIABCor$estimate` and `r HRABCor$estimate` respectively.  In-Degree Centrality is also significantly correlated with at bats (Kendall's Tau-b `r ABCor$estimate) due to the fact that players with longer careers have more at bats and are also more likely to have several managers.  Therefore it may be more appropriate analyze the correlation between In-Degree Centrality and RBIs and Home Runs per at bat to account for some of the variance due to the duration of a player's career.  Utilizing this methodology, both RBIs per at bat and Home Runs per at bat are still significantly correlated with In-Degree Centrality, but the strength of the correlation is diminished.  
+One problem with using Runs Batted In and Home Runs in this way is that they are cumulative statistics.  That is to say that the more at bats that a player has the more RBIs and HRs that player will have by simple virtue of having multiple attempts. In fact RBIs and HRs are significantly correlated with at bats with a Kendall's Tau-b score of `r RBIABCor$estimate` and `r HRABCor$estimate` respectively.  In-Degree Centrality is also significantly correlated with at bats (Kendall's Tau-b: `r ABCor$estimate`) due to the fact that players with longer careers have more at bats and are also more likely to have several managers.  Therefore it may be more informative to analyze the correlation between In-Degree Centrality and RBIs and Home Runs per at bat to account for some of the variance due to the duration of a player's career.  Utilizing this methodology, both RBIs per at bat and Home Runs per at bat are still significantly correlated with In-Degree Centrality, but the strength of the correlation is diminished.  
 
 ```{r, echo =F, message=F, warning=F, error=F}
 tibble(
@@ -393,4 +395,8 @@ grid.arrange(p5, p6, p7, p8, ncol=2, top="Scatterplots of Correlations")
 
 ## Summary
 
-This analysis was based on previous research that suggests that having many different teammates is positively correlated with improved offensive play at the Major League Baseball Level.  The authors of that paper suggested that being exposed to many styles and ideas about baseball could translate to learning "tricks of the trade" that result in the improved hitting.  Following that line of thinking, this analysis investigated the relationship between the number of coaches that a player has and the same offensive metrics.  To investigate this, offensive performance metrics were extracted from the Lahman dataset, a publicly available repository of historical baseball statistics.  Relationships between managers and players were generated through the Retrosheet Database, which contains game logs of every Major League Baseball game going back many years.  Utilizing these datasets, a significant positive correlations were found between the number of managers that players played for and the offensive metrics of Runs Batted In per game and Home Runs per game.  This analysis suggests that there may be a benefit in exposing players to a large number of managers during their career.  This may encourage teams to trade young talent in the hopes of benefitting from any cumulative knowledge gained through the various coaching styles and ideas.  A limitation of this analysis is the inability to experimentally test the relationship between the number of coaches and the offensive metrics.  At the core of the issue is the problem that better players have longer careers, and during those longer careers they are exposed to more managers.  Therefore a player may have more managers throughout a longer career solely because they are better baseball players.  Attempting to more deeply understand this relationship would require additional effort, but would be a valuable addition to better understand the dynamics of this correlation.
+This analysis was based on previous research that suggests that having many different teammates is positively correlated with improved offensive play at the Major League Baseball Level.  The authors of that paper suggested that being exposed to many styles and ideas about baseball could translate to learning "tricks of the trade" that result in the improved hitting.  Following that line of thinking, this analysis investigated the relationship between the number of coaches that a player has and an informative set of offensive metrics.  These metrics were extracted from the Lahman dataset, a publicly available repository of historical baseball statistics.  Relationships between managers and players were generated through the Retrosheet Database, which contains game logs of every Major League Baseball game going back many years.  Utilizing these datasets, significant positive correlations were found between the number of managers that players played for and the offensive metrics of Runs Batted In / Game and Home Runs / Game.  This analysis suggests that there may be a benefit in exposing players to a large number of managers during their career.  This may encourage teams to trade young talent in the hopes of benefitting from any cumulative knowledge gained through the various coaching styles and ideas.  A limitation of this analysis is the inability to experimentally test the relationship between the number of coaches and the offensive metrics.  At the core of the issue is the problem that better players have longer careers, and during those longer careers they are exposed to more managers.  Therefore a player may have more managers throughout a longer career solely because they are better baseball players.  Attempting to more deeply understand this relationship would require additional effort, but would be a valuable addition to better understand the dynamics of this correlation.
+
+## Acknowledgments
+
+Special thanks is given to LTC Christopher Smith who assisted in formulating the idea for this analysis.  He also was essential in developing a deeper understanding of Social Network Analysis.
