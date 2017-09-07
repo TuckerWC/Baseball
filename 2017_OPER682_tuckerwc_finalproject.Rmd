@@ -10,7 +10,7 @@ urlcolor: blue
 # Check required packages and install if needed
 my_packages <- c("knitr", "tidyverse", "gridExtra", "Lahman", "reshape2", "igraph")
 new_packages <- my_packages[!(my_packages %in% installed.packages()[,"Package"])]
-if(length(new_packages)) install.packages(new_packages)
+if(length(new_packages)) install.packages(new_packages, repos='http://cran.us.r-project.org')
 #
 library(knitr)
 # Set so that long lines in R will be wrapped:
